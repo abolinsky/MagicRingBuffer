@@ -70,4 +70,12 @@ auto create_memory_mapped_buffer(std::size_t N) -> std::span<T> {
     return { first_buffer, capacity };
 }
 
+template<typename T>
+auto delete_memory_mapped_buffer(std::span<T> s) {
+    if (!s.empty()) {
+        munmap(s.data(), 2 * s.size_bytes());
+    }
+}
+
+
 } /* namespace magic */

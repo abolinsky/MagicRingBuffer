@@ -65,9 +65,7 @@ try : buffer_(create_memory_mapped_buffer<T>(N)) {
 
 template<typename T, std::size_t N>
 RingBuffer<T, N>::~RingBuffer() {
-    if (!buffer_.empty()) {
-        munmap(buffer_.data(), 2 * buffer_.size_bytes());
-    }
+    delete_memory_mapped_buffer<T>(buffer_);
 }
 
 template<typename T, std::size_t N>
@@ -103,25 +101,25 @@ auto RingBuffer<T, N>::read() -> T {
 
 template<typename T, std::size_t N>
 std::span<const T> RingBuffer<T, N>::c_peek() const {
-    auto count { write_pos_ > read_pos_ ? write_pos_ - read_pos_ : (write_pos_ + buffer_.size()) - read_pos_ };
+    auto count { write_pos_ >= read_pos_ ? write_pos_ - read_pos_ : (write_pos_ + buffer_.size()) - read_pos_ };
     return { &buffer_[read_pos_], count };
 }
 
 template<typename T, std::size_t N>
 std::span<T> RingBuffer<T, N>::peek() {
-    auto count { read_pos_ > write_pos_ ? read_pos_ - write_pos_ : (read_pos_ + buffer_.size()) - write_pos_ };
+    auto count { read_pos_ >= write_pos_ ? read_pos_ - write_pos_ : (read_pos_ + buffer_.size()) - write_pos_ };
     return { &buffer_[write_pos_], count };
 }
 
 template<typename T, std::size_t N>
 auto RingBuffer<T, N>::begin() const -> typename RingBuffer<T, N>::iterator {
-    auto read_pos { write_pos_ > read_pos_ ? read_pos_ : read_pos_ + buffer_.size() };
+    auto read_pos { write_pos_ >= read_pos_ ? read_pos_ : read_pos_ + buffer_.size() };
     return iterator { &buffer_[read_pos] };
 };
 
 template<typename T, std::size_t N>
 auto RingBuffer<T, N>::end() const -> typename RingBuffer<T, N>::iterator {
-    auto write_pos { write_pos_ > read_pos_ ? write_pos_ : write_pos_ + buffer_.size() };
+    auto write_pos { write_pos_ >= read_pos_ ? write_pos_ : write_pos_ + buffer_.size() };
     return iterator { &buffer_[write_pos] };
 };
 
