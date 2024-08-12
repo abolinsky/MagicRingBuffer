@@ -1,5 +1,7 @@
 #pragma once
 
+#include "magic.hpp"
+
 #include <exception>
 #include <iostream>
 #include <cstdint>
@@ -11,137 +13,116 @@
 #include <cerrno>
 #include <cstring>
 #include <string>
-#include <filesystem>
 
-auto create_temporary_file() -> int {
-    auto temp_dir { std::filesystem::temp_directory_path() };
-    auto temp_file { temp_dir / "XXXXXX" };
-    char* temp_file_cstr { strdup(temp_file.c_str()) };
-    int fd { mkstemp(temp_file_cstr) };
-    if (fd == -1) {
-        throw std::runtime_error("Failed to create temporary file: " + std::string(strerror(errno)));
-    }
-    std::filesystem::remove(temp_file);
-    return fd;
-}
+namespace magic {
 
-auto get_page_size() -> long {
-    long page_size = sysconf(_SC_PAGESIZE);
-    if (page_size == -1) {
-        throw std::runtime_error("Failed to get page size: " + std::string(strerror(errno)));
-    }
-    
-    return page_size;
-}
-
-auto resize_file(int fd, size_t size) -> void {
-    if (ftruncate(fd, size) == -1) {
-        throw std::runtime_error("Failed to set file size: " + std::string(strerror(errno)));
-    }
-}
-
-template<typename T, std::size_t N, bool magic = false>
+template<typename T, std::size_t N>
 class RingBuffer {
 public:
-    RingBuffer() {
-        if constexpr (!magic) return;
-        
-        std::cout << "I'm magic" << std::endl;
+    class iterator {
+    public:
+        iterator(T* ptr) : ptr_(ptr) {}
+        auto operator*() const -> T& { return *ptr_; }
+        auto operator++() -> iterator& { ++ptr_; return *this; }
+        auto operator++(int) -> iterator { iterator tmp { *this }; ++ptr_; return tmp; }
+        auto operator!=(const iterator& other) const -> bool { return ptr_ != other.ptr_; }
+        auto operator==(const iterator& other) const -> bool { return ptr_ == other.ptr_; }
+    private:
+        T* ptr_;
+    };
 
-        try {
-            fd_ = create_temporary_file();
-            auto page_size { get_page_size() };
-
-            std::cout << "page size: " << page_size << std::endl;
-
-            // Calculate the size to map, rounded up to the nearest page size
-            size_t page_size_multiple { ((N * sizeof(T) + page_size - 1) / page_size) };
-
-            std::cout << "size: " << (N * sizeof(T)) << ", page size multiple: " << page_size_multiple << std::endl;
-
-            map_size_ = page_size_multiple * page_size;
-
-            std::cout << "map size: " << map_size_ << std::endl;
-
-            resize_file(fd_, map_size_);
-
-            // Reserve address space for two contiguous mappings
-            void* addr = mmap(nullptr, 2 * map_size_, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-            if (addr == MAP_FAILED) {
-                throw std::runtime_error("Failed to reserve address space: " + std::string(strerror(errno)));
-            }
-
-            // Map the file twice
-            buffer_ = static_cast<T*>(mmap(addr, map_size_, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd_, 0));
-            if (buffer_ == MAP_FAILED) {
-                munmap(addr, 2 * map_size_);
-                throw std::runtime_error("Failed to map first region: " + std::string(strerror(errno)));
-            }
-
-            void* second = mmap(static_cast<char*>(addr) + map_size_, map_size_, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd_, 0);
-            if (second == MAP_FAILED) {
-                munmap(addr, 2 * map_size_);
-                throw std::runtime_error("Failed to map second region: " + std::string(strerror(errno)));
-            }
-        } catch (...) {
-            this->~RingBuffer();
-            throw;
-        }
-    }
-
-    ~RingBuffer() {
-        if (buffer_) {
-            munmap(buffer_, 2 * map_size_);
-        }
-        if (fd_ != -1) {
-            close(fd_);
-        }
-    }
+    RingBuffer();
+    ~RingBuffer();
 
     RingBuffer(const RingBuffer&) = delete;
-    RingBuffer& operator=(const RingBuffer&) = delete;
+    RingBuffer(RingBuffer&& other) noexcept;
 
-    RingBuffer(RingBuffer&& other) noexcept
-        : buffer_(other.buffer_), fd_(other.fd_), map_size_(other.map_size_), read_pos_(other.read_pos_), write_pos_(other.write_pos_) {
-        other.buffer_ = nullptr;
-        other.fd_ = -1;
-    }
+    auto operator=(const RingBuffer&) = delete;
+    auto operator=(RingBuffer&& other) noexcept;
 
-    RingBuffer& operator=(RingBuffer&& other) noexcept {
-        if (this != &other) {
-            this->~RingBuffer();
-            buffer_ = other.buffer_;
-            fd_ = other.fd_;
-            map_size_ = other.map_size_;
-            read_pos_ = other.read_pos_;
-            write_pos_ = other.write_pos_;
-            other.buffer_ = nullptr;
-            other.fd_ = -1;
-        }
-        return *this;
-    }
+    auto write(const T& value) -> void;
+    auto read() -> T;
 
-    void write(const T& value) {
-        buffer_[write_pos_++] = value;
-    }
+    auto peek() -> std::span<T>;
+    auto c_peek() const -> std::span<const T>;
 
-    T read() {
-        T value = buffer_[read_pos_++];
-        return value;
-    }
-
-    std::span<const T> get_read_span(std::size_t count) const {
-        return {&buffer_[read_pos_], std::min(count, N - read_pos_)};
-    }
-
-    std::span<T> get_write_span(std::size_t count) {
-        return {&buffer_[write_pos_], std::min(count, N - write_pos_)};
-    }
+    auto begin() const -> iterator;
+    auto end() const -> iterator;
 
 private:
-    T* buffer_ { nullptr };
-    int fd_ { -1 };
-    std::size_t map_size_ { 0 };
+    std::span<T> buffer_;
     std::size_t read_pos_ { 0 };
     std::size_t write_pos_ { 0 };
 };
+
+template<typename T, std::size_t N>
+RingBuffer<T, N>::RingBuffer()
+try : buffer_(create_memory_mapped_buffer<T>(N)) {
+} catch (...) {
+    this->~RingBuffer();
+    throw;
+}
+
+template<typename T, std::size_t N>
+RingBuffer<T, N>::~RingBuffer() {
+    if (!buffer_.empty()) {
+        munmap(buffer_.data(), 2 * buffer_.size_bytes());
+    }
+}
+
+template<typename T, std::size_t N>
+RingBuffer<T, N>::RingBuffer(RingBuffer&& other) noexcept
+    : buffer_(other.buffer_), read_pos_(other.read_pos_), write_pos_(other.write_pos_) {
+    other.buffer_ = nullptr;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::operator=(RingBuffer&& other) noexcept {
+    if (this != &other) {
+        this->~RingBuffer();
+        buffer_ = other.buffer_;
+        read_pos_ = other.read_pos_;
+        write_pos_ = other.write_pos_;
+        other.buffer_ = nullptr;
+    }
+    return *this;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::write(const T& value) -> void {
+    buffer_[write_pos_] = value;
+    ++write_pos_ %= N;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::read() -> T {
+    T value { buffer_[read_pos_] };
+    ++read_pos_ %= N;
+    return value;
+}
+
+template<typename T, std::size_t N>
+std::span<const T> RingBuffer<T, N>::c_peek() const {
+    auto count { write_pos_ > read_pos_ ? write_pos_ - read_pos_ : (write_pos_ + buffer_.size()) - read_pos_ };
+    return { &buffer_[read_pos_], count };
+}
+
+template<typename T, std::size_t N>
+std::span<T> RingBuffer<T, N>::peek() {
+    auto count { read_pos_ > write_pos_ ? read_pos_ - write_pos_ : (read_pos_ + buffer_.size()) - write_pos_ };
+    return { &buffer_[write_pos_], count };
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::begin() const -> typename RingBuffer<T, N>::iterator {
+    auto read_pos { write_pos_ > read_pos_ ? read_pos_ : read_pos_ + buffer_.size() };
+    return iterator { &buffer_[read_pos] };
+};
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::end() const -> typename RingBuffer<T, N>::iterator {
+    auto write_pos { write_pos_ > read_pos_ ? write_pos_ : write_pos_ + buffer_.size() };
+    return iterator { &buffer_[write_pos] };
+};
+
+} /* namespace magic */
