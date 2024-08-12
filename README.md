@@ -1,1 +1,1 @@
-# magic_ring_buffer
+# MagicRingBuffer
