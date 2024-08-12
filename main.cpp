@@ -8,10 +8,16 @@ auto demonstrate_ring_buffer() -> void {
 
     auto start = std::chrono::high_resolution_clock::now();
 
+    std::cout << buffer.size() << std::endl;
+    std::cout << buffer.empty() << std::endl;
+
     static size_t index { 0 };
     for (auto& i : buffer.peek()) {
         buffer.write(index++);
     }
+
+    std::cout << buffer.size() << std::endl;
+    std::cout << buffer.empty() << std::endl;
 
     for (const auto& i : buffer.c_peek()) {
         std::cerr << i << std::endl;

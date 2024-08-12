@@ -40,6 +40,8 @@ public:
     auto operator=(const RingBuffer&) = delete;
     auto operator=(RingBuffer&& other) noexcept;
 
+    auto empty() const -> bool;
+    auto size() const -> size_t;
     auto write(const T& value) -> void;
     auto read() -> T;
 
@@ -84,6 +86,16 @@ auto RingBuffer<T, N>::operator=(RingBuffer&& other) noexcept {
         other.buffer_ = std::span<T>();
     }
     return *this;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::empty() const -> bool {
+    return read_pos_ == write_pos_;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::size() const -> size_t {
+    return write_pos_ >= read_pos_ ? write_pos_ - read_pos_ : (write_pos_ + buffer_.size()) - read_pos_;
 }
 
 template<typename T, std::size_t N>
