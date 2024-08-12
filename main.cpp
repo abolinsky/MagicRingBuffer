@@ -15,10 +15,11 @@ auto demonstrate_ring_buffer() -> void {
 
     buffer.write(4);
 
+    magic::RingBuffer<int, 4096> buffer2 { std::move(buffer) };
+
     for (auto& i : buffer) {
         std::cout << buffer.read() << std::endl;
     }
-
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);

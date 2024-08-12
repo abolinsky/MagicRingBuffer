@@ -71,7 +71,7 @@ RingBuffer<T, N>::~RingBuffer() {
 template<typename T, std::size_t N>
 RingBuffer<T, N>::RingBuffer(RingBuffer&& other) noexcept
     : buffer_(other.buffer_), read_pos_(other.read_pos_), write_pos_(other.write_pos_) {
-    other.buffer_ = nullptr;
+    other.buffer_ = std::span<T>();
 }
 
 template<typename T, std::size_t N>
@@ -81,7 +81,7 @@ auto RingBuffer<T, N>::operator=(RingBuffer&& other) noexcept {
         buffer_ = other.buffer_;
         read_pos_ = other.read_pos_;
         write_pos_ = other.write_pos_;
-        other.buffer_ = nullptr;
+        other.buffer_ = std::span<T>();
     }
     return *this;
 }
