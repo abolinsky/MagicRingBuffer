@@ -107,8 +107,8 @@ std::span<const T> RingBuffer<T, N>::c_peek() const {
 
 template<typename T, std::size_t N>
 std::span<T> RingBuffer<T, N>::peek() {
-    auto count { read_pos_ >= write_pos_ ? read_pos_ - write_pos_ : (read_pos_ + buffer_.size()) - write_pos_ };
-    return { &buffer_[write_pos_], count };
+    auto count { read_pos_ > write_pos_ ? read_pos_ - write_pos_ : (read_pos_ + buffer_.size()) - write_pos_ };
+    return { &buffer_[write_pos_], count - 1 };
 }
 
 template<typename T, std::size_t N>

@@ -9,21 +9,19 @@ auto demonstrate_ring_buffer() -> void {
     auto start = std::chrono::high_resolution_clock::now();
 
     static size_t index { 0 };
-    for (auto& i : buffer) {
-        std::cout << "hi" << std::endl;
+    for (auto& i : buffer.peek()) {
+        buffer.write(index++);
     }
 
-    buffer.write(4);
-
-    magic::RingBuffer<int, 4096> buffer2 { std::move(buffer) };
-
-    for (auto& i : buffer) {
-        std::cout << buffer.read() << std::endl;
+    for (const auto& i : buffer.c_peek()) {
+        std::cerr << i << std::endl;
     }
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     std::cout << "Time taken: " << duration.count() << " microseconds" << std::endl;
+
+    magic::RingBuffer<int, 4096> buffer2 { std::move(buffer) };
 }
 
 int main() {
