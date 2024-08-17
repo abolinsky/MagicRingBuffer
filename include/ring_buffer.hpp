@@ -2,6 +2,7 @@
 
 #include "magic.hpp"
 
+#include <utility>
 #include <exception>
 #include <iostream>
 #include <cstdint>
@@ -40,10 +41,18 @@ public:
     auto operator=(const RingBuffer&) = delete;
     auto operator=(RingBuffer&& other) noexcept;
 
+    auto front() const -> const T&;
+    auto front() -> T&;
+
+    auto back() const -> const T&;
+    auto back() -> T&;
+
     auto empty() const -> bool;
     auto size() const -> size_t;
-    auto write(const T& value) -> void;
-    auto read() -> T;
+
+    auto push(const T& value) -> void;
+    auto push(T&& value) -> void;
+    auto pop() -> void;
 
     auto peek() -> std::span<T>;
     auto c_peek() const -> std::span<const T>;
@@ -89,6 +98,26 @@ auto RingBuffer<T, N>::operator=(RingBuffer&& other) noexcept {
 }
 
 template<typename T, std::size_t N>
+auto RingBuffer<T, N>::front() const -> const T& {
+    return buffer_[read_pos_];
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::front() -> T& {
+    return buffer_[read_pos_];
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::back() const -> const T& {
+    return buffer_[write_pos_ - 1];
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::back() -> T& {
+    return buffer_[write_pos_ - 1];
+}
+
+template<typename T, std::size_t N>
 auto RingBuffer<T, N>::empty() const -> bool {
     return read_pos_ == write_pos_;
 }
@@ -99,16 +128,20 @@ auto RingBuffer<T, N>::size() const -> size_t {
 }
 
 template<typename T, std::size_t N>
-auto RingBuffer<T, N>::write(const T& value) -> void {
+auto RingBuffer<T, N>::push(const T& value) -> void {
     buffer_[write_pos_] = value;
     ++write_pos_ %= N;
 }
 
 template<typename T, std::size_t N>
-auto RingBuffer<T, N>::read() -> T {
-    T value { buffer_[read_pos_] };
+auto RingBuffer<T, N>::push(T&& value) -> void {
+    buffer_[write_pos_] = value;
+    ++write_pos_ %= N;
+}
+
+template<typename T, std::size_t N>
+auto RingBuffer<T, N>::pop() -> void {
     ++read_pos_ %= N;
-    return value;
 }
 
 template<typename T, std::size_t N>
